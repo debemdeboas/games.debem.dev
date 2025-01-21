@@ -22,7 +22,6 @@ func main() {
 
 func initialModel() tea.Model {
 	txtStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("10")).
 		BorderStyle(lipgloss.RoundedBorder())
 	quitStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("8"))
@@ -30,7 +29,7 @@ func initialModel() tea.Model {
 		Foreground(lipgloss.Color("9"))
 	snakeStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("10"))
-	borderStyle := lipgloss.NewStyle()
+	borderStyle := lipgloss.NewStyle().SetString("  ")
 
 	// Get terminal width and height
 	w, h, _ := term.GetSize(int(os.Stdout.Fd()))

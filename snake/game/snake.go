@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	TICKDURATION = 10 * time.Millisecond
+	TICKDURATION = 16 * time.Millisecond
 	INITIALSPEED = 8
 
-	UP    = 0
-	DOWN  = 1
-	LEFT  = 2
-	RIGHT = 3
+	UP    = 1
+	DOWN  = 2
+	LEFT  = 3
+	RIGHT = 4
 
 	BOARDWIDTH  = 26
 	BOARDHEIGHT = 34
@@ -38,11 +38,11 @@ type Model struct {
 	Bg      string
 
 	// Styles
-	TxtStyle    lipgloss.Style
-	QuitStyle   lipgloss.Style
-	FoodStyle   lipgloss.Style
-	SnakeStyle  lipgloss.Style
-	BorderStyle lipgloss.Style
+	TxtStyle       lipgloss.Style
+	QuitStyle      lipgloss.Style
+	FoodStyle      lipgloss.Style
+	SnakeStyle     lipgloss.Style
+	GameBoardStyle lipgloss.Style
 
 	// Game state
 	tickCount int
@@ -50,10 +50,10 @@ type Model struct {
 	snake     []Position
 	direction int
 	dirChan   chan int
+	lastDir   int
 	food      Position
 	score     int
 	gameOver  bool
-	lastTick  time.Time
 	pause     bool
 
 	// Board
@@ -84,7 +84,7 @@ func NewModel(term string, profile string, width, height int, bg string, styles 
 		m.QuitStyle = styles[1]
 		m.FoodStyle = styles[2]
 		m.SnakeStyle = styles[3]
-		m.BorderStyle = styles[4]
+		m.GameBoardStyle = styles[4]
 	}
 
 	m.RestartGame()
@@ -114,12 +114,11 @@ func (m *Model) RestartGame() {
 	m.food = Position{X: initialX + 5, Y: initialY}
 	m.score = 0
 	m.gameOver = false
-	m.lastTick = time.Now()
 	m.pause = false
 }
 
 func (m *Model) updateSpeed() {
-	newSpeed := m.moveSpeed - (1 / m.score)
+	newSpeed := INITIALSPEED - (m.score / 2)
 	if newSpeed < 3 {
 		newSpeed = 3
 	}
@@ -180,6 +179,13 @@ func (m Model) checkCollision(pos Position) bool {
 	return false
 }
 
+func isOppositeDirection(a, b int) bool {
+	return (a == UP && b == DOWN) ||
+		(a == DOWN && b == UP) ||
+		(a == LEFT && b == RIGHT) ||
+		(a == RIGHT && b == LEFT)
+}
+
 func (m *Model) handleFood(newHead Position) {
 	m.score++
 	m.updateSpeed()
@@ -192,24 +198,42 @@ func (m *Model) handleTick() {
 
 	if m.tickCount >= m.moveSpeed {
 		m.tickCount = 0
+		lastValidDir := -1
 
-		select {
-		case newDir := <-m.dirChan:
-			m.direction = newDir
-		default:
-		}
+	bufferLoop:
+		for {
+			select {
+			case newDir := <-m.dirChan:
+				if !isOppositeDirection(newDir, m.direction) && (newDir != m.direction) {
+					log.Debug("New direction", "dir", newDir, "oldDir", m.direction)
+					lastValidDir = newDir
+				} else {
+					log.Debug("Invalid direction", "dir", newDir, "oldDir", m.direction)
+					continue bufferLoop
+				}
+			default:
+			}
 
-		newHead := m.calcNewHead()
+			if lastValidDir >= 0 {
+				m.direction = lastValidDir
+				m.lastDir = lastValidDir
+				log.Debugf("New direction: %d", m.direction)
+			}
 
-		if m.checkCollision(newHead) {
-			m.gameOver = true
-			return
-		}
+			newHead := m.calcNewHead()
 
-		if newHead.X == m.food.X && newHead.Y == m.food.Y {
-			m.handleFood(newHead)
-		} else {
-			m.snake = append([]Position{newHead}, m.snake[:len(m.snake)-1]...)
+			if m.checkCollision(newHead) {
+				m.gameOver = true
+				return
+			}
+
+			if newHead.X == m.food.X && newHead.Y == m.food.Y {
+				m.handleFood(newHead)
+			} else {
+				m.snake = append([]Position{newHead}, m.snake[:len(m.snake)-1]...)
+			}
+
+			break
 		}
 	}
 }
@@ -224,36 +248,48 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "w", "k", "up":
-			if m.direction != DOWN && m.direction != UP {
-				select {
-				case m.dirChan <- UP:
-				default:
-					log.Warn("Buffer full, dropping up")
-				}
+			if m.lastDir == UP {
+				break
+			}
+			select {
+			case m.dirChan <- UP:
+				m.lastDir = UP
+				log.Debug("Direction UP")
+			default:
+				log.Warn("Buffer full, dropping up")
 			}
 		case "s", "j", "down":
-			if m.direction != UP && m.direction != DOWN {
-				select {
-				case m.dirChan <- DOWN:
-				default:
-					log.Warn("Buffer full, dropping down")
-				}
+			if m.lastDir == DOWN {
+				break
+			}
+			select {
+			case m.dirChan <- DOWN:
+				m.lastDir = DOWN
+				log.Debug("Direction DOWN")
+			default:
+				log.Warn("Buffer full, dropping down")
 			}
 		case "a", "h", "left":
-			if m.direction != RIGHT && m.direction != LEFT {
-				select {
-				case m.dirChan <- LEFT:
-				default:
-					log.Warn("Buffer full, dropping left")
-				}
+			if m.lastDir == LEFT {
+				break
+			}
+			select {
+			case m.dirChan <- LEFT:
+				m.lastDir = LEFT
+				log.Debug("Direction LEFT")
+			default:
+				log.Warn("Buffer full, dropping left")
 			}
 		case "d", "l", "right":
-			if m.direction != LEFT && m.direction != RIGHT {
-				select {
-				case m.dirChan <- RIGHT:
-				default:
-					log.Warn("Buffer full, dropping right")
-				}
+			if m.lastDir == RIGHT {
+				break
+			}
+			select {
+			case m.dirChan <- RIGHT:
+				m.lastDir = RIGHT
+				log.Debug("Direction RIGHT")
+			default:
+				log.Warn("Buffer full, dropping right")
 			}
 		case " ":
 			m.pause = !m.pause
@@ -313,12 +349,18 @@ func (m Model) View() string {
 				renderedCell = "🍎"
 				s.WriteString(m.FoodStyle.Render(renderedCell))
 			default:
-				renderedCell = "  "
-				s.WriteString(m.BorderStyle.Render(renderedCell))
+				s.WriteString(m.GameBoardStyle.Render())
 			}
 		}
 	}
 
-	return m.TxtStyle.Render(s.String()) + "\n" +
-		m.QuitStyle.Render(fmt.Sprintf("Score: %d | Press 'r' to restart | Press 'q' to quit\n", m.score))
+	return lipgloss.Place(
+		m.Width, m.Height,
+		lipgloss.Center, lipgloss.Center,
+		lipgloss.JoinVertical(
+			lipgloss.Center,
+			m.TxtStyle.Render(s.String())+"\n",
+			m.QuitStyle.Render("Press 'q' to quit"),
+		),
+	)
 }
