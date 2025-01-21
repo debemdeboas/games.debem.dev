@@ -28,8 +28,8 @@ const (
 )
 
 const (
-	tickDuration = 16 * time.Millisecond
-	initialSpeed = 8
+	tickDuration = 10 * time.Millisecond
+	initialSpeed = 4
 
 	up    = 0
 	down  = 1
@@ -182,9 +182,9 @@ func (m *GameModel) restartGame() {
 }
 
 func (m *GameModel) updateSpeed() {
-	newSpeed := initialSpeed - (m.score / 5)
-	if newSpeed < 4 {
-		newSpeed = 4
+	newSpeed := initialSpeed - (m.score / 4)
+	if newSpeed < 3 {
+		newSpeed = 3
 	}
 	m.moveSpeed = newSpeed
 }
@@ -214,6 +214,43 @@ func (m GameModel) newFoodPosition() Position {
 	}
 }
 
+func (m GameModel) calcNewHead() Position {
+	head := m.snake[0]
+
+	// Calculate new position based on current direction
+	switch m.direction {
+	case up:
+		return Position{x: head.x, y: head.y - 1}
+	case down:
+		return Position{x: head.x, y: head.y + 1}
+	case left:
+		return Position{x: head.x - 1, y: head.y}
+	case right:
+		return Position{x: head.x + 1, y: head.y}
+	default:
+		return head
+	}
+}
+
+func (m GameModel) checkCollision(pos Position) bool {
+	// Check for collision with borders
+	if pos.x < 0 || pos.x >= m.boardWidth ||
+		pos.y < 0 || pos.y >= m.boardHeight {
+		log.Warn("Snake collided with border", "snake", m.snake)
+		return true
+	}
+
+	// Check for collision with self
+	for _, bodyPos := range m.snake[1:] {
+		if pos.x == bodyPos.x && pos.y == bodyPos.y {
+			log.Warn("Snake collided with itself", "head", pos, "collision", bodyPos, "snake", m.snake)
+			return true
+		}
+	}
+
+	return false
+}
+
 func (m *GameModel) handleFood(newHead Position) {
 	m.score++
 	m.updateSpeed()
@@ -226,52 +263,31 @@ func (m *GameModel) handleFood(newHead Position) {
 }
 
 func (m *GameModel) handleTick() {
-	m.tickCount = 0
+	m.tickCount++
 
-	// Move snake
-	head := m.snake[0]
-	newHead := Position{x: head.x, y: head.y}
+	if m.tickCount >= m.moveSpeed {
+		m.tickCount = 0
 
-	select {
-	case newDir := <-m.dirChan:
-		m.direction = newDir
-	default:
-	}
+		select {
+		case newDir := <-m.dirChan:
+			m.direction = newDir
+		default:
+		}
 
-	switch m.direction {
-	case up:
-		newHead.y -= 1
-	case down:
-		newHead.y += 1
-	case left:
-		newHead.x -= 1
-	case right:
-		newHead.x += 1
-	}
+		newHead := m.calcNewHead()
 
-	// Check for collision with borders
-	if newHead.x < 0 || newHead.x >= m.boardWidth ||
-		newHead.y < 0 || newHead.y >= m.boardHeight {
-		log.Debug("Snake collided with border", "head", newHead)
-		m.gameOver = true
-		return
-	}
-
-	// Check for collision with self
-	for _, pos := range m.snake[1:] {
-		if newHead.x == pos.x && newHead.y == pos.y {
-			log.Debug("Snake collided with itself", "head", newHead, "pos", pos)
+		if m.checkCollision(newHead) {
+			log.Info("Game over", "head", newHead)
 			m.gameOver = true
 			return
 		}
-	}
 
-	// Check for food
-	if newHead.x == m.food.x && newHead.y == m.food.y {
-		log.Info("Snake ate food", "head", newHead, "food", m.food)
-		m.handleFood(newHead)
-	} else {
-		m.snake = append([]Position{newHead}, m.snake[:len(m.snake)-1]...)
+		if newHead.x == m.food.x && newHead.y == m.food.y {
+			log.Info("Snake ate food", "head", newHead, "food", m.food)
+			m.handleFood(newHead)
+		} else {
+			m.snake = append([]Position{newHead}, m.snake[:len(m.snake)-1]...)
+		}
 	}
 }
 
@@ -286,34 +302,38 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "w", "k", "up":
 			if m.direction != down && m.direction != up {
-				log.Debug("Changing direction to up")
 				select {
 				case m.dirChan <- up:
+					log.Debug("Changing direction to up")
 				default:
+					log.Warn("Buffer full, dropping up")
 				}
 			}
 		case "s", "j", "down":
 			if m.direction != up && m.direction != down {
-				log.Debug("Changing direction to down")
 				select {
 				case m.dirChan <- down:
+					log.Debug("Changing direction to down")
 				default:
+					log.Warn("Buffer full, dropping down")
 				}
 			}
 		case "a", "h", "left":
 			if m.direction != right && m.direction != left {
-				log.Debug("Changing direction to left")
 				select {
 				case m.dirChan <- left:
+					log.Debug("Changing direction to left")
 				default:
+					log.Warn("Buffer full, dropping left")
 				}
 			}
 		case "d", "l", "right":
 			if m.direction != left && m.direction != right {
-				log.Debug("Changing direction to right")
 				select {
 				case m.dirChan <- right:
+					log.Debug("Changing direction to right")
 				default:
+					log.Warn("Buffer full, dropping right")
 				}
 			}
 		case " ":
@@ -330,10 +350,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.tick()
 		}
 
-		m.tickCount++
-		if m.tickCount >= m.moveSpeed {
-			m.handleTick()
-		}
+		m.handleTick()
 		return m, m.tick()
 	}
 	return m, nil
