@@ -39,7 +39,7 @@ const (
 	boardWidth  = 26
 	boardHeight = 34
 
-	bufferedDirectionChanges = 10
+	bufferedDirectionChanges = 5
 )
 
 func main() {
@@ -285,7 +285,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "w", "k", "up":
-			if m.direction != down {
+			if m.direction != down && m.direction != up {
 				log.Debug("Changing direction to up")
 				select {
 				case m.dirChan <- up:
@@ -293,7 +293,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "s", "j", "down":
-			if m.direction != up {
+			if m.direction != up && m.direction != down {
 				log.Debug("Changing direction to down")
 				select {
 				case m.dirChan <- down:
@@ -301,7 +301,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "a", "h", "left":
-			if m.direction != right {
+			if m.direction != right && m.direction != left {
 				log.Debug("Changing direction to left")
 				select {
 				case m.dirChan <- left:
@@ -309,7 +309,7 @@ func (m GameModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "d", "l", "right":
-			if m.direction != left {
+			if m.direction != left && m.direction != right {
 				log.Debug("Changing direction to right")
 				select {
 				case m.dirChan <- right:
