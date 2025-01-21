@@ -69,7 +69,6 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	quitStyle := renderer.NewStyle().Foreground(lipgloss.Color("8"))
 	foodStyle := renderer.NewStyle().Foreground(lipgloss.Color("9"))
 	snakeStyle := renderer.NewStyle().Foreground(lipgloss.Color("10"))
-	gameBoardStyle := renderer.NewStyle().SetString("  ")
 
 	bg := "light"
 	if renderer.HasDarkBackground() {
@@ -86,7 +85,14 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 		quitStyle,
 		foodStyle,
 		snakeStyle,
-		gameBoardStyle,
+		lipgloss.NewStyle().SetString("  "),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
+		lipgloss.
+			NewStyle().
+			Foreground(lipgloss.Color("#FF0000")).
+			Align(lipgloss.Center).
+			Background(lipgloss.Color("#363636")).
+			Padding(3),
 	)
 
 	return m, []tea.ProgramOption{tea.WithAltScreen()}

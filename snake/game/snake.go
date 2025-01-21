@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -43,6 +44,8 @@ type Model struct {
 	FoodStyle      lipgloss.Style
 	SnakeStyle     lipgloss.Style
 	GameBoardStyle lipgloss.Style
+	ScoreStyle     lipgloss.Style
+	GameOverStyle  lipgloss.Style
 
 	// Game state
 	tickCount int
@@ -79,12 +82,14 @@ func NewModel(term string, profile string, width, height int, bg string, styles 
 	}
 
 	// Apply styles if provided
-	if len(styles) >= 5 {
+	if len(styles) >= 7 {
 		m.TxtStyle = styles[0]
 		m.QuitStyle = styles[1]
 		m.FoodStyle = styles[2]
 		m.SnakeStyle = styles[3]
 		m.GameBoardStyle = styles[4]
+		m.ScoreStyle = styles[5]
+		m.GameOverStyle = styles[6]
 	}
 
 	m.RestartGame()
@@ -118,7 +123,8 @@ func (m *Model) RestartGame() {
 }
 
 func (m *Model) updateSpeed() {
-	newSpeed := INITIALSPEED - (m.score / 2)
+	speedReduction := int(math.Log2(float64(m.score + 1)))
+	newSpeed := INITIALSPEED - speedReduction
 	if newSpeed < 3 {
 		newSpeed = 3
 	}
@@ -194,8 +200,6 @@ func (m *Model) handleFood(newHead Position) {
 }
 
 func (m *Model) handleTick() {
-	m.tickCount++
-
 	if m.tickCount >= m.moveSpeed {
 		m.tickCount = 0
 		lastValidDir := -1
@@ -305,6 +309,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.tick()
 		}
 
+		m.tickCount++
 		m.handleTick()
 		return m, m.tick()
 	}
@@ -312,10 +317,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	if m.gameOver {
-		return m.QuitStyle.Render(fmt.Sprintf("Game Over! Score: %d\nPress 'r' to restart | Press 'q' to quit\n", m.score))
-	}
-
 	board := make([][]string, m.boardHeight)
 	for i := range board {
 		board[i] = make([]string, m.boardWidth)
@@ -354,13 +355,32 @@ func (m Model) View() string {
 		}
 	}
 
-	return lipgloss.Place(
+	gameView := lipgloss.Place(
 		m.Width, m.Height,
 		lipgloss.Center, lipgloss.Center,
 		lipgloss.JoinVertical(
 			lipgloss.Center,
+			m.ScoreStyle.Render(fmt.Sprintf("Score: %d", m.score)),
 			m.TxtStyle.Render(s.String())+"\n",
+			m.QuitStyle.Render("Press 'r' to restart | Press 'SPACE' to pause"),
 			m.QuitStyle.Render("Press 'q' to quit"),
 		),
 	)
+
+	if m.gameOver {
+		gameOver := m.GameOverStyle.Render(lipgloss.JoinVertical(
+			lipgloss.Center,
+			"Game Over!",
+			fmt.Sprintf("Score: %d", m.score),
+			"Press 'r' to restart",
+		))
+
+		return lipgloss.Place(
+			m.Width, m.Height,
+			lipgloss.Center, lipgloss.Center,
+			gameOver,
+		)
+	}
+
+	return gameView
 }
